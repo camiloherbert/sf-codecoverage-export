@@ -13,20 +13,61 @@ public class CodeCoverageExportUtility {
                             + 'FROM ApexCodeCoverageAggregate';
     }
 
-    public static String getCodeCoverageReport () {
+    public static CoverageReportWrapper getCodeCoverageReport () {
 
         HttpRequest req = new HttpRequest();
 
-        req.setEndpoint(ENDPOINT_URL + CODE_COVERAGE_QUERY);
+        String encodedQuery = EncodingUtil.urlEncode(CODE_COVERAGE_QUERY, 'UTF-8');
+
+        req.setEndpoint(ENDPOINT_URL + encodedQuery);
         req.setHeader('Authorization', 'Bearer ' + UserInfo.getSessionID());
         req.setHeader('Content-Type', 'application/json');
         req.setMethod('GET');
-        req.setTimeout(80000);
 
         Http http = new Http();
         HTTPResponse res = http.send(req);
 
-        return res.getBody();
+        CoverageReportWrapper response = 
+                        (CoverageReportWrapper) JSON.deserialize(res.getBody(), 
+                                                                 CoverageReportWrapper.class);
 
+        return response;
+
+    }
+
+    public static List<Class_Code_Coverage__c> updateLocalCodeCoverageRecords () {
+
+        CoverageReportWrapper coverageReport = getCodeCoverageReport();
+        List<Class_Code_Coverage__c> newReport = new List<Class_Code_Coverage__c>();
+
+        for (CoverageReport cr : coverageReport.records) {
+            Class_Code_Coverage__c entry = New Class_Code_Coverage__c();
+            entry.Name = cr.ApexClassOrTrigger.Name;
+            entry.NumLinesCovered__c = cr.NumLinesCovered;
+            entry.NumLinesUncovered__c = cr.NumLinesUncovered;
+            newReport.add(entry);
+        }
+
+        insert newReport;
+
+        // Delete any previous versions. TODO: Keep history of records
+        delete [SELECT Id FROM Class_Code_Coverage__c WHERE Id NOT IN :newReport];
+
+        return newReport;
+
+    }
+
+    public class CoverageReportWrapper {
+        List<CoverageReport> records;
+    }
+
+    public class CoverageReport {
+        Integer NumLinesCovered;
+        Integer NumLinesUncovered;
+        EntityInfo ApexClassOrTrigger;
+    }
+
+    public class EntityInfo {
+        String Name;
     }
 }
